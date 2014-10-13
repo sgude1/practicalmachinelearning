@@ -1,0 +1,193 @@
+---
+title: "Machine Learning Assignment"
+output: html_document
+---
+
+####Initial work cleaning the data set  
+
+The training data was broken into a training (60%) and test (40%) data set to enable cross validation and several columns were removed that had no information or incomplete information for the various user names.  The columns of data maintained went through two screens.  The first kept all columns that were populated for the user names and thus kept columns that began with:  
+  
+accel_|cvtd_|gyros_|magnet_|new_|num_|pitch_|problem_|raw_|roll_|total_|user_|yaw_|classe  
+  
+The second scrub removed columns that were not entirely complete:  
+  
+roll_forearm|pitch_forearm|yaw_forearm|roll_arm|pitch_arm|yaw_arm  
+  
+Due to the nature of the data the following columns were treated as factors:  
+  
+user_name, classe, new_window  
+  
+
+```{r, data_load}
+#Load the data
+train<-read.csv("pml-training.csv")
+assignment<-read.csv("pml-testing.csv")
+```
+
+```{r, load_libraries}
+options(warn=-1)
+library(ggplot2)
+library(lattice)
+library(caret)
+library(kernlab)
+library(gbm)
+library(randomForest)
+library(psych)
+library(rpart)
+library(MASS)
+library(plyr)
+library(e1071)
+
+```
+
+```{r, training_data}
+#Create training and test set
+set.seed(123)
+inTrain<-createDataPartition(y=train$classe, p=0.6, list=FALSE)
+training<-train[inTrain,]
+testing<-train[-inTrain,]
+remove(train,inTrain)
+```
+
+```{r, clean_data}
+#Clean the data
+#TRAINING
+
+#remove unnecessary columns
+cleanTrain <- training[, grep("^accel_|^cvtd_|^gyros_|^magnet_|^new_|^num_|^pitch_|^problem_|^raw_|^roll_|^total_|^user_|^yaw_|^classe", colnames(training))]
+
+#change factors to factors
+cleanTrain$user_name<-factor(cleanTrain$user_name)
+cleanTrain$classe<-factor(cleanTrain$classe)
+cleanTrain$new_window<-factor(cleanTrain$new_window)
+
+#TESTING
+
+#remove unnecessary columns
+cleanTest <- testing[, grep("^accel_|^cvtd_|^gyros_|^magnet_|^new_|^num_|^pitch_|^problem_|^raw_|^roll_|^total_|^user_|^yaw_|^classe", colnames(testing))]
+
+#change factors to factors
+cleanTest$user_name<-factor(cleanTest$user_name)
+cleanTest$classe<-factor(cleanTest$classe)
+cleanTest$new_window<-factor(cleanTest$new_window)
+
+#assignment
+
+#remove unnecessary columns
+cleanAssignment <- assignment[, grep("^accel_|^cvtd_|^gyros_|^magnet_|^new_|^num_|^pitch_|^problem_|^raw_|^roll_|^total_|^user_|^yaw_|^classe", colnames(assignment))]
+
+#change factors to factors
+cleanAssignment$user_name<-factor(cleanAssignment$user_name)
+cleanAssignment$new_window<-factor(cleanAssignment$new_window)
+remove(assignment,testing, training)
+
+#remove columns not populated for all user_names
+cleanTrain <- cleanTrain[, -grep("roll_forearm|pitch_forearm|yaw_forearm|roll_arm|pitch_arm|yaw_arm", colnames(cleanTrain))]
+
+cleanTest <- cleanTest[, -grep("roll_forearm|pitch_forearm|yaw_forearm|roll_arm|pitch_arm|yaw_arm", colnames(cleanTest))]
+
+cleanAssignment <- cleanAssignment[, -grep("roll_forearm|pitch_forearm|yaw_forearm|roll_arm|pitch_arm|yaw_arm", colnames(cleanAssignment))]
+```
+
+####Modeling Approaches
+
+Once the data was cleaned, several models were applied against the data.  Based on the size and type of the data set some models provided errors or were stopped after computing for over an hour.  The models that were used that did return results were:  
+  
+-Tree models:  RPART and GBM  
+-Linear discriminate analysis:  LDA   
+-And Support vector machine:  SVM  
+  
+The models are shown below.  GBM is commented out due to the time it takes to run.  
+  
+```{r, develop_models, cache=TRUE}
+#Develop Models
+set.seed(123)
+modelFit.rpart<-train(classe~., method="rpart", data=cleanTrain) 
+
+set.seed(123)
+modelFit.lda<-train(classe~., data=cleanTrain, method="lda")
+
+set.seed(123)
+modelFit.svm<-svm(classe~., data=cleanTrain) 
+
+# set.seed(123)
+# modelFit.gbm<-train(classe~., data=cleanTrain, method="gbm", verbose=FALSE)
+```
+
+The following data shows performance against the training set.  Again, the GBM model is not executed due to the time it takes to run.  
+  
+
+```{r, predict_against_train_set, cache=TRUE}
+#Predict against training set
+set.seed(123)
+predict.svm<-predict(modelFit.svm,cleanTrain)
+#set.seed(123)
+# predict.gbm.train<-predict(modelFit.gbm,cleanTrain)
+set.seed(123)
+predict.rpart.train<-predict(modelFit.rpart,cleanTrain)
+set.seed(123)
+predict.lda.train<-predict(modelFit.lda,cleanTrain)
+```
+  
+**SVM Model Confusion Matrix - Training Data**  
+  
+```{r, cache=TRUE}
+set.seed(123)
+confusionMatrix(predict.svm, cleanTrain$classe)
+```
+
+**RPART Model Confusion Matrix - Training Data**  
+  
+```{r, cache=TRUE}
+set.seed(123)
+confusionMatrix(predict.rpart.train, cleanTrain$classe)
+```
+
+**LDA Model Confusion Matrix - Training Data**  
+  
+```{r, cache=TRUE}
+set.seed(123)
+confusionMatrix(predict.lda.train, cleanTrain$classe)
+#set.seed(123)
+#confusionMatrix(predict.gbm.train, cleanTrain$classe)
+
+```
+
+The following data shows SVM performance against the testing set as well as the other models with the exception of GBM.  The results from all models included in this analysis are shown below in a table.  
+
+  
+```{r, predict_against_test_set, cache=TRUE}
+set.seed(123)
+predict.svm.test<-predict(modelFit.svm,cleanTest)
+
+set.seed(123)
+Tpredict.rpart<-predict(modelFit.rpart,cleanTest)
+confusionMatrix(Tpredict.rpart, cleanTest$classe)
+set.seed(123) 
+Tpredict.lda<-predict(modelFit.lda,cleanTest)
+confusionMatrix(Tpredict.lda, cleanTest$classe)
+#set.seed(123)
+# Tpredict.gbm<-predict(modelFit.gbm,cleanTest)
+# confusionMatrix(Tpredict.gbm, cleanTest$classe)
+```
+ 
+**SVM Model Confusion Matrix - Testing Data**  
+  
+```{r, cache=TRUE} 
+confusionMatrix(predict.svm.test, cleanTest$classe)
+```
+ 
+Each of the above models were applied against the training data set and the test data set to determine in sample and out of sample error.  The table below shows the accuracy of the training and test sets.  
+  
+```{r, accuracy_table}
+trial <- matrix(c(.999,.657,.855, .944, .997,.66,.859,.943), ncol=2)
+colnames(trial) <- c('TrainingData', 'TestingData')
+rownames(trial) <- c('GBM', 'RPART', 'LDA','SVM')
+trial.table <- as.table(trial)
+print(trial.table)
+```
+  
+Despite the improved accuracy from the GBM model, execution took an extended amount of time and similar to the example in class with Netflix, this model was difficult to work with so I used the SVM model and sacrificed ~5% accuracy for speed.  Based on this approach the out of sample error was expected to be ~6% based on the prediction using the test data.  Accordingly, 19 of the 20 users were accurately identified using this model.  
+
+
+
